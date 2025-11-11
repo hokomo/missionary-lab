@@ -6,11 +6,6 @@
    [missionary-lab.client :as c]
    [missionary-lab.util :as u]))
 
-(defn log-abrupt
-  "Return a task that will log abrupt termination (spotaneous failures)."
-  [task]
-  (u/spontaneously? task {} #(when %1 (log/error "Abrupt termination" %2))))
-
 ;;; Executor
 
 (defn executor
@@ -19,7 +14,7 @@
   [mbx]
   (m/ap
     (let [task (m/?> ##Inf (u/continually mbx))]
-      (try (m/? (log-abrupt task)) (catch Throwable _)))))
+      (try (m/? (u/log-abrupt task)) (catch Throwable _)))))
 
 (defn exec
   "Send off a `task` for execution to an executor backed by `mbx`. Return a
@@ -63,7 +58,7 @@
   machine."
   [ctor events]
   (let [push (m/rdv)
-        proc ((log-abrupt (machine-top push ctor events)) {} {})]
+        proc ((u/log-abrupt (machine-top push ctor events)) {} {})]
     (fn
       ([] (proc))
       ([e] (push e)))))
@@ -77,10 +72,15 @@
 
 ;;; Problem: Modeling a state machine
 
-(defn rand-in
-  "Return a random integer in the interval [`from`, `to`]."
-  [from to]
-  (+ from (rand-int (inc (- to from)))))
+(defn example-pusher
+  "Return a `machine-pusher` whose result functions wrap the result into a map
+  with a `:tag` key equal to `tag` and an `s`/`f` key (`:val`/`:err` by default)
+  equal to the success/failure result."
+  [push task tag & [s f]]
+  (machine-pusher
+   push task
+   (fn [v] {:tag tag (or s :val) v})
+   (fn [e] {:tag tag (or f :err) e})))
 
 (defn example-job
   "Return a task representing some example work by sleeping for a random number of
@@ -89,20 +89,10 @@
   [work-for chance fail-for]
   (m/sp
     (if (< (rand) chance)
-      (do (m/? (m/sleep (* (apply rand-in fail-for) 1000)))
+      (do (m/? (m/sleep (* (apply u/rand-in fail-for) 1000)))
           (throw (ex-info "Crash" {})))
-      (let [delay (apply rand-in work-for)]
+      (let [delay (apply u/rand-in work-for)]
         (m/? (m/sleep (* delay 1000) delay))))))
-
-(defn example-pusher
-  "Return a `machine-pusher` whose result functions wrap the result into a map
-  with a `:tag` key equal to `tag` and a `:val`/`:err` equal to the
-  success/failure result."
-  [push task tag & [s f]]
-  (machine-pusher
-   push task
-   (fn [v] {:tag tag (or s :val) v})
-   (fn [e] {:tag tag (or f :err) e})))
 
 (defn example-machine
   "Return the initial behavior of an example state machine that is powered by

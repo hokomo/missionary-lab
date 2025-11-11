@@ -63,7 +63,7 @@
   (some? (swap! internal #(some-> % (assoc :done? true)))))
 
 (defn register!
-  "Register a 1-arity function as a listener for a client event."
+  "Register a 1-ary function as a listener for a client event."
   [type key f]
   (assert @internal "Client not started")
   (swap! internal update-in [:listeners type] assoc key f)
@@ -77,7 +77,7 @@
   key)
 
 (defn later!
-  "Invoke a 0-arity function on the client thread."
+  "Invoke a 0-ary function on the client thread at some point in the future."
   [f]
   (assert @internal "Client not started")
   (swap! internal update :invokes conj f)

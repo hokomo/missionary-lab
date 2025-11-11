@@ -5,7 +5,7 @@
    [missionary-lab.client :as c]
    [missionary-lab.util :as u]))
 
-;;; An API similar to Swing's EDT
+;;; Client API (similar to Java Swing's in spirit)
 
 (comment
   ;; Start the client
@@ -25,7 +25,7 @@
   (c/unregister! :key)
   )
 
-;;; Missionarified API
+;;; Missionarified Client API
 
 (defmacro on-client [& body]
   "Ensure `body` is run on the client thread but within a context that supports

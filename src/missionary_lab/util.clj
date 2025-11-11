@@ -1,13 +1,21 @@
 (ns missionary-lab.util
   (:require
+   [clojure.tools.logging :as log]
    [missionary.core :as m]))
+
+;;; Math
+
+(defn rand-in
+  "Return a random integer in the interval [`from`, `to`]."
+  [from to]
+  (+ from (rand-int (inc (- to from)))))
 
 ;;; Tasks
 
 (defmacro on
-  "Similar to `via` but can only be used from within a Missionary context. Ensures
-  that `body` will be run on `executor` but within a context that supports
-  Missionary synchronizers."
+  "Similar to `via` but can only be used within an existing Missionary context.
+  Ensures that `body` will be run on `executor` but within a context that
+  supports Missionary synchronizers."
   [executor & body]
   `(do (m/? (m/via ~executor)) ~@body))
 
@@ -17,9 +25,10 @@
   (m/absolve (apply m/race (map m/attempt tasks))))
 
 (defn spontaneously?
-  "When `task` terminates successfully/with a failure, invoke `s`/`f` with 2
-  arguments: a boolean flag indicating whether the termination was spontaneous,
-  and the termination result."
+  "Return a task that invokes `s`/`f` with 2 arguments when `task` terminates
+  successfully/with a failure: a boolean flag indicating whether the termination
+  was spontaneous, and the termination result. `s` and `f` must not throw or
+  block."
   [task s f]
   (fn [s! f!]
     (let [cancelled? (atom false)
@@ -28,15 +37,22 @@
       #(do (reset! cancelled? true)
            (cancel)))))
 
+(defn log-abrupt
+  "Return a task that will log abrupt termination (spotaneous failures)."
+  [task]
+  (spontaneously? task {} #(when %1 (log/error "Terminated abruptly" %2))))
+
 ;;; Flows
 
 (defmacro doflow
-  "A convenient shorthand for `reduce`."
+  "A convenient shorthand for a particular style of `reduce`. `e` is bound to the
+  transfered value and `body` is the body of the reducing function."
   [[e flow] & body]
   `(m/reduce (fn [~'_ ~e] ~@body) nil ~flow))
 
 (defn select
-  "A flow that non-deterministically transfers from any of its input flows."
+  "Return a flow that non-deterministically transfers from any of its input
+  flows."
   [& flows]
   (m/ap
     (loop [[f & fs] flows]
