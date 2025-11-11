@@ -2,8 +2,7 @@
   (:require
    [clojure.tools.logging :as log])
   (:import
-   clojure.lang.PersistentQueue
-   java.util.concurrent.Executor))
+   clojure.lang.PersistentQueue))
 
 (defonce
   ^{:private true :doc "Client state that is not important for users."}
@@ -76,13 +75,6 @@
   (swap! internal update :listeners update-vals #(dissoc % key))
   key)
 
-(defn later!
-  "Invoke a 0-ary function on the client thread at some point in the future."
-  [f]
-  (assert @internal "Client not started")
-  (swap! internal update :invokes conj f)
-  f)
-
 (defonce
   ^{:private true :doc "The global client instance."}
   instance
@@ -111,11 +103,12 @@
     (throw (ex-info "Not on the client thread" {})))
   @external)
 
-(def executor
-  "A reentrant Executor that runs code on the client thread."
-  (reify Executor
-    (execute [_ r]
-      ;; NOTE: Make the executor reentrant.
-      (if (= (Thread/currentThread) (:thread @instance))
-        (.run r)
-        (later! #(.run r))))))
+(defn invoke!
+  "Invoke a 0-ary function on the client thread. If called from the client thread,
+  `f` is invoked immediately, otherwise at some point in the future."
+  [f]
+  (assert @internal "Client not started")
+  (if (= (Thread/currentThread) (:thread @instance))
+    (f)
+    (swap! internal update :invokes conj f))
+  f)
