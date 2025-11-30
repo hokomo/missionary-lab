@@ -101,34 +101,30 @@
 
 (comment
   (m/? (pull request-hato 8 (random-reqs 4 4)))
-  (m/? (pull request-hato-sync 8 (random-reqs 4 4)))
-
   (m/? (pull request-bb 8 (random-reqs 4 4)))
-  (m/? (pull request-bb-sync 8 (random-reqs 4 4)))
-
   (m/? (pull request-jhc 8 (random-reqs 4 4)))
-  (m/? (pull request-jhc-sync 8 (random-reqs 4 4)))
-
   (m/? (pull request-ch 8 (random-reqs 4 4)))
-  (m/? (pull request-ch-sync 8 (random-reqs 4 4)))
 
   (((request-hato ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-hato err-req) #(log/info :ok %) #(log/info :ko %)))
-  (((request-hato-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
-  (((request-hato-sync err-req) #(log/info :ok %) #(log/info :ko %)))
-
   (((request-bb ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-bb err-req) #(log/info :ok %) #(log/info :ko %)))
-  (((request-bb-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
-  (((request-bb-sync err-req) #(log/info :ok %) #(log/info :ko %)))
-
   (((request-jhc ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-jhc err-req) #(log/info :ok %) #(log/info :ko %)))
-  (((request-jhc-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
-  (((request-jhc-sync err-req) #(log/info :ok %) #(log/info :ko %)))
-
   (((request-ch ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-ch err-req) #(log/info :ok %) #(log/info :ko %)))
+
+  (m/? (pull request-hato-sync 8 (random-reqs 4 4)))
+  (m/? (pull request-bb-sync 8 (random-reqs 4 4)))
+  (m/? (pull request-jhc-sync 8 (random-reqs 4 4)))
+  (m/? (pull request-ch-sync 8 (random-reqs 4 4)))
+
+  (((request-hato-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-hato-sync err-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-bb-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-bb-sync err-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-jhc-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-jhc-sync err-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-ch-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-ch-sync err-req) #(log/info :ok %) #(log/info :ko %)))
   )
