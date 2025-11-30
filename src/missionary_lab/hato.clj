@@ -1,12 +1,16 @@
 (ns missionary-lab.hato
   (:require
+   [babashka.http-client :as bb]
+   [clj-http.client :as ch]
    [clojure.tools.logging :as log]
    [hato.client :as hato]
+   [java-http-clj.core :as jhc]
    [missionary.core :as m])
   (:import
-   java.util.concurrent.CompletableFuture))
+   java.util.concurrent.CompletableFuture
+   java.util.concurrent.Future))
 
-(defn request [& {:keys [id] :as req}]
+(defn request-hato [& {:keys [id] :as req}]
   (fn [s! f!]
     (let [cf (hato/request
               (assoc req :async? true)
@@ -14,7 +18,41 @@
               #(do (log/info "f!" id) (f! %)))]
       #(.cancel ^CompletableFuture cf true))))
 
-(defn pull [par reqs]
+(defn request-bb [& {:keys [id] :as req}]
+  (fn [s! f!]
+    (let [cf (bb/request
+              (assoc req
+                     :async true
+                     :async-then #(do (log/info "s!" id) (s! %))
+                     :async-catch #(do (log/info "f!" id) (f! (:ex %)))))]
+      #(.cancel ^CompletableFuture cf true))))
+
+(defn request-jhc [& {:keys [id] :as req}]
+  (m/sp
+    (let [{:keys [status] :as res}
+          (m/? (fn [s! f!]
+                 (let [cf (jhc/send-async
+                           req {}
+                           #(do (log/info "s!" id) (s! %))
+                           #(do (log/info "f!" id) (f! %)))]
+                   #(.cancel ^CompletableFuture cf true))))]
+      (if (= status 500)
+        (throw (ex-info "Unsuccessful response" {}))
+        res))))
+
+(defn request-ch [& {:keys [id] :as req}]
+  (fn [s! f!]
+    (let [fut (ch/request
+               (assoc req
+                      :async? true
+                      :oncancel #(do (log/info "f!" id)
+                                     (f! (ex-info "Request interrupted"
+                                                  {:req req}))))
+               #(do (log/info "s!" id) (s! %))
+               #(do (log/info "f!" id) (f! %)))]
+      #(.cancel ^Future fut true))))
+
+(defn pull [request par reqs]
   (->> (m/ap
          (let [{:keys [id] :as req} (m/?> par (m/seed reqs))]
            (log/info "Sending" id req)
@@ -25,11 +63,35 @@
                   (throw e)))))
        (m/reduce conj [])))
 
+(def ok-req
+  {:url "https://httpbin.org/status/200"
+   :uri "https://httpbin.org/status/200"
+   :method :get})
+
+(def err-req
+  {:url "https://httpbin.org/status/500"
+   :uri "https://httpbin.org/status/500"
+   :method :get})
+
 (defn random-reqs [ok err]
   (shuffle (sequence (comp cat (map-indexed #(assoc %2 :id %1)))
-                     [(repeat ok {:url "https://httpbin.org/status/200"})
-                      (repeat err {:url "https://httpbin.org/status/500"})])))
+                     [(repeat ok ok-req) (repeat err err-req)])))
 
 (comment
-  (m/? (pull 8 (random-reqs 4 4)))
+  (m/? (pull request-hato 8 (random-reqs 4 4)))
+  (m/? (pull request-bb 8 (random-reqs 4 4)))
+  (m/? (pull request-jhc 8 (random-reqs 4 4)))
+  (m/? (pull request-ch 8 (random-reqs 4 4)))
+
+  (((request-hato ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-hato err-req) #(log/info :ok %) #(log/info :ko %)))
+
+  (((request-bb ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-bb err-req) #(log/info :ok %) #(log/info :ko %)))
+
+  (((request-jhc ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-jhc err-req) #(log/info :ok %) #(log/info :ko %)))
+
+  (((request-ch ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-ch err-req) #(log/info :ok %) #(log/info :ko %)))
   )
