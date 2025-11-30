@@ -8,6 +8,7 @@
    [missionary.core :as m])
   (:import
    java.util.concurrent.CompletableFuture
+   java.util.concurrent.Executors
    java.util.concurrent.Future))
 
 (defn request-hato [& {:keys [id] :as req}]
@@ -18,6 +19,10 @@
               #(do (log/info "f!" id) (f! %)))]
       #(.cancel ^CompletableFuture cf true))))
 
+(defn request-hato-sync [& {:keys [id] :as req}]
+  (m/via (Executors/newVirtualThreadPerTaskExecutor)
+    (hato/request req)))
+
 (defn request-bb [& {:keys [id] :as req}]
   (fn [s! f!]
     (let [cf (bb/request
@@ -26,6 +31,10 @@
                      :async-then #(do (log/info "s!" id) (s! %))
                      :async-catch #(do (log/info "f!" id) (f! (:ex %)))))]
       #(.cancel ^CompletableFuture cf true))))
+
+(defn request-bb-sync [& {:keys [id] :as req}]
+  (m/via (Executors/newVirtualThreadPerTaskExecutor)
+    (bb/request req)))
 
 (defn request-jhc [& {:keys [id] :as req}]
   (m/sp
@@ -40,6 +49,15 @@
         (throw (ex-info "Unsuccessful response" {}))
         res))))
 
+(defn request-jhc-sync [& {:keys [id] :as req}]
+  (m/sp
+    (let [{:keys [status] :as res}
+          (m/? (m/via (Executors/newVirtualThreadPerTaskExecutor)
+                 (jhc/send req)))]
+      (if (= status 500)
+        (throw (ex-info "Unsuccessful response" {:res res}))
+        res))))
+
 (defn request-ch [& {:keys [id] :as req}]
   (fn [s! f!]
     (let [fut (ch/request
@@ -51,6 +69,10 @@
                #(do (log/info "s!" id) (s! %))
                #(do (log/info "f!" id) (f! %)))]
       #(.cancel ^Future fut true))))
+
+(defn request-ch-sync [& {:keys [id] :as req}]
+  (m/via (Executors/newVirtualThreadPerTaskExecutor)
+    (ch/request req)))
 
 (defn pull [request par reqs]
   (->> (m/ap
@@ -79,19 +101,34 @@
 
 (comment
   (m/? (pull request-hato 8 (random-reqs 4 4)))
+  (m/? (pull request-hato-sync 8 (random-reqs 4 4)))
+
   (m/? (pull request-bb 8 (random-reqs 4 4)))
+  (m/? (pull request-bb-sync 8 (random-reqs 4 4)))
+
   (m/? (pull request-jhc 8 (random-reqs 4 4)))
+  (m/? (pull request-jhc-sync 8 (random-reqs 4 4)))
+
   (m/? (pull request-ch 8 (random-reqs 4 4)))
+  (m/? (pull request-ch-sync 8 (random-reqs 4 4)))
 
   (((request-hato ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-hato err-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-hato-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-hato-sync err-req) #(log/info :ok %) #(log/info :ko %)))
 
   (((request-bb ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-bb err-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-bb-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-bb-sync err-req) #(log/info :ok %) #(log/info :ko %)))
 
   (((request-jhc ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-jhc err-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-jhc-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-jhc-sync err-req) #(log/info :ok %) #(log/info :ko %)))
 
   (((request-ch ok-req) #(log/info :ok %) #(log/info :ko %)))
   (((request-ch err-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-ch-sync ok-req) #(log/info :ok %) #(log/info :ko %)))
+  (((request-ch-sync err-req) #(log/info :ok %) #(log/info :ko %)))
   )
