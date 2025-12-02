@@ -1,4 +1,4 @@
-(ns missionary-lab.hato
+(ns missionary-lab.http
   (:require
    [babashka.http-client :as bb]
    [clj-http.client :as ch]
