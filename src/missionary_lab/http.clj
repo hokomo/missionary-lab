@@ -11,6 +11,8 @@
    java.util.concurrent.Executors
    java.util.concurrent.Future))
 
+;;; Problem: Misbehaving HTTP libraries
+
 (defn request-hato [& {:keys [id] :as req}]
   (fn [s! f!]
     (let [cf (hato/request
