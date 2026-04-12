@@ -19,15 +19,15 @@
 (defn poll [task]
   (m/ap (m/? (m/?> (m/seed (repeat task))))))
 
-(defn feedback [f & args]
+(defn feedback-1 [f & args]
   (m/ap
-   (let [rdv (m/rdv)
-         x (m/?> (apply f (poll rdv) args))]
-     (m/? (rdv x))
-     x)))
+    (let [rdv (m/rdv)
+          x (m/?> (apply f (poll rdv) args))]
+      (m/? (rdv x))
+      x)))
 
 (defn task-reductions-2 [rf init flow]
-  (feedback #(m/ap (m/amb init (m/? (m/?> (m/zip rf %1 %2))))) flow))
+  (feedback-1 #(m/ap (m/amb init (m/? (m/?> (m/zip rf %1 %2))))) flow))
 
 (defn task-reduce-2 [rf init flow]
   (m/reduce {} nil (task-reductions-2 rf init flow)))
@@ -49,4 +49,22 @@
 (comment
   ;; Version 3. Works and is correct.
   (m/? (task-reduce-3 #(m/sp (+ %1 %2)) 0 (m/seed (range 10))))
+  )
+
+(defn feedback-2 [f & args]
+  (m/ap
+   (let [mbx (m/mbx)
+         x (m/?> (apply f (poll mbx) args))]
+     (mbx x)
+     x)))
+
+(defn task-reductions-4 [rf init flow]
+  (feedback-2 #(m/ap (m/amb init (m/? (m/?> (m/zip rf %1 %2))))) flow))
+
+(defn task-reduce-4 [rf init flow]
+  (m/reduce {} nil (task-reductions-4 rf init flow)))
+
+(comment
+  ;; Version 4. Works and is correct. Like version 2 but using `m/mbx`.
+  (m/? (task-reduce-4 #(m/sp (+ %1 %2)) 0 (m/seed (range 10))))
   )
