@@ -6,7 +6,7 @@
 
 (set! *warn-on-reflection* true)
 
-;;; Problem: Reflection warnings within conditionals
+;;; Problem 1: Reflection warnings within conditionals
 
 (defn foo ^Closeable []
   nil)
@@ -26,3 +26,12 @@
 
 (defn reflection-2b []
   (m/sp (if true (.close (foo)))))
+
+;;; Problem 2: Performance warning
+
+(defn reflection-3 [& flows]
+  (m/ap
+   (loop [[f & fs] flows]
+     (if f
+       (m/amb= (m/?> f) (recur fs))
+       (m/amb)))))
