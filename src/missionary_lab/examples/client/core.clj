@@ -4,6 +4,8 @@
   (:import
    clojure.lang.PersistentQueue))
 
+;;; Core Client API (similar to Java Swing's in spirit)
+
 (defonce
   ^{:private true :doc "Client state that is not important for users."}
   internal
@@ -112,3 +114,21 @@
     (f)
     (swap! internal update :invokes conj f))
   f)
+
+(comment
+  ;; Start the client
+  (restart!)
+
+  ;; Can run code on the client thread
+  (invoke! #(log/info "Hello from the client thread"))
+
+  ;; Must not access the state off the client thread
+  (try (state) (catch Throwable e (log/error e)))
+
+  ;; Must access the state on the client thread
+  (invoke! #(log/info "State:" (state)))
+
+  ;; Can register event listeners that run on the client thread
+  (register! :tick :key (fn [_] (log/info "Tick:" (state))))
+  (unregister! :key)
+  )

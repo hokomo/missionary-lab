@@ -7,26 +7,6 @@
   (:import
    java.util.concurrent.Executor))
 
-;;; Core Client API (similar to Java Swing's in spirit)
-
-(comment
-  ;; Start the client
-  (c/restart!)
-
-  ;; Can run code on the client thread
-  (c/invoke! #(log/info "Hello from the client thread"))
-
-  ;; Must not access the state off the client thread
-  (try (c/state) (catch Throwable e (log/error e)))
-
-  ;; Must access the state on the client thread
-  (c/invoke! #(log/info "State:" (c/state)))
-
-  ;; Can register event listeners that run on the client thread
-  (c/register! :tick :key (fn [_] (log/info "Tick:" (c/state))))
-  (c/unregister! :key)
-  )
-
 ;;; Missionarified Client API
 
 (def client-executor
