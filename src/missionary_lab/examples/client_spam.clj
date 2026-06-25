@@ -16,7 +16,8 @@
   "Return a task that waits for the client's tick counter to advance by 1."
   []
   (m/sp
-   (let [tick (w/on-client (:ticks (c/state)))]
+   (w/to-client)
+   (let [tick (:ticks (c/state))]
      (m/? (u/doflow [_ (w/client-events :tick)]
                     (let [tick' (:ticks (c/state))]
                       (when (>= tick' (inc tick))
@@ -26,11 +27,11 @@
   (c/restart!)
 
   (m/? (m/sp
-         (w/on-client
-           (dotimes [_ 3]
-             (log/info "Before: " (:ticks (c/state)))
-             (m/? (tick-wait-1))
-             (log/info "After: " (:ticks (c/state)))))))
+        (w/to-client)
+        (dotimes [_ 3]
+          (log/info "Before: " (:ticks (c/state)))
+          (m/? (tick-wait-1))
+          (log/info "After: " (:ticks (c/state))))))
   )
 
 ;;; Version 2
@@ -43,7 +44,8 @@
   "Like `tick-wait-1` but accepts the flow of tick events as a parameter."
   [ticks]
   (m/sp
-   (let [tick (w/on-client (:ticks (c/state)))]
+   (w/to-client)
+   (let [tick (:ticks (c/state))]
      (m/? (u/doflow [_ ticks]
                     (let [tick' (:ticks (c/state))]
                       (when (>= tick' (inc tick))
@@ -52,11 +54,11 @@
 (comment
   (m/? (let [events (m/stream (w/client-events :tick))]
          (m/sp
-           (w/on-client
-            (dotimes [_ 3]
-              (log/info "Before: " (:ticks (c/state)))
-              (m/? (tick-wait-2 events))
-              (log/info "After: " (:ticks (c/state)))))))))
+           (w/to-client)
+           (dotimes [_ 3]
+             (log/info "Before: " (:ticks (c/state)))
+             (m/? (tick-wait-2 events))
+             (log/info "After: " (:ticks (c/state))))))))
 
 ;;; Version 3
 ;;;
@@ -69,9 +71,9 @@
          (u/fastest
           (m/reduce {} nil events)
           (m/sp
-            (w/on-client
-              (dotimes [_ 3]
-                (log/info "Before: " (:ticks (c/state)))
-                (m/? (tick-wait-2 events))
-                (log/info "After: " (:ticks (c/state)))))))))
+           (w/to-client)
+           (dotimes [_ 3]
+             (log/info "Before: " (:ticks (c/state)))
+             (m/? (tick-wait-2 events))
+             (log/info "After: " (:ticks (c/state))))))))
   )

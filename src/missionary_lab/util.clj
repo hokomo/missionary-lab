@@ -12,12 +12,12 @@
 
 ;;; Tasks
 
-(defmacro on
-  "Similar to `via` but can only be used within an existing Missionary context.
-  Ensures that `body` will be run on `executor` but within a context that
-  supports Missionary synchronizers."
-  [executor & body]
-  `(do (m/? (m/via ~executor)) ~@body))
+(defmacro to
+  "Ensure that the remainder of a Missionary context will start off by executing
+  on a thread from the given executor. *MUST* be used within an existing
+  Missionary context."
+  [executor]
+  `(m/? (m/via ~executor nil)))
 
 (defn fastest
   "Like `race` but admits failed tasks."

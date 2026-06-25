@@ -35,10 +35,10 @@
     (execute [_ r]
       (c/invoke! #(.run r)))))
 
-(defmacro on-client [& body]
-  "Ensure `body` is run on the client thread but within a context that supports
-  Missionary synchronizers."
-  `(u/on client-executor ~@body))
+(defmacro to-client []
+  "Ensure that the remainder of a Missionary context will start off by executing
+  on the client thread. *MUST* be used within an existing Missionary context."
+  `(u/to client-executor))
 
 (defn client-events
   "Return a flow of client events of type `type`."
@@ -55,7 +55,7 @@
 
   ;; Can run code on the client thread
   (m/? (m/via client-executor (log/info "Hello from the client thread!")))
-  (m/? (m/sp (on-client (log/info "Hello from the client thread!"))))
+  (m/? (m/sp (to-client) (log/info "Hello from the client thread!")))
 
   ;; Can register event flows that transfer from the client thread
   (m/? (m/reduce (fn [_ _] (log/info "Tick:" (c/state)))
