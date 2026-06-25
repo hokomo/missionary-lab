@@ -23,7 +23,7 @@
   canceller for the task."
   [mbx task]
   (let [dfv (m/dfv)]
-    (mbx (u/fastest dfv task))
+    (mbx (m/any dfv task))
     #(dfv nil)))
 
 ;;; Machine
@@ -50,9 +50,9 @@
         dfv (m/dfv)
         init (ctor (partial exec mbx) push #(dfv nil))
         events (u/select events (u/continually push))]
-    (u/fastest dfv (m/join (constantly nil)
-                           (m/reduce {} nil (machine-loop init events))
-                           (m/reduce {} nil (executor mbx))))))
+    (m/any dfv (m/join (constantly nil)
+                       (m/reduce {} nil (machine-loop init events))
+                       (m/reduce {} nil (executor mbx))))))
 
 (defn machine-go
   "Instantiate a `machine-top` task with the given `ctor` and `events`. Return a

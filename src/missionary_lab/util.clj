@@ -19,11 +19,6 @@
   [executor]
   `(m/? (m/via ~executor nil)))
 
-(defn fastest
-  "Like `race` but admits failed tasks."
-  [& tasks]
-  (m/absolve (apply m/race (map m/attempt tasks))))
-
 (defn spontaneously?
   "Return a task that invokes `s`/`f` with 2 arguments when `task` terminates
   successfully/with a failure: a boolean flag indicating whether the termination

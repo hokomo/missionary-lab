@@ -68,7 +68,7 @@
 
 (comment
   (m/? (let [events (m/stream (w/client-events :tick))]
-         (u/fastest
+         (m/any
           (m/reduce {} nil events)
           (m/sp
            (w/to-client)
