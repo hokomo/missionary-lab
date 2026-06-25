@@ -7,13 +7,23 @@
 ;;; Core Client API (similar to Java Swing's in spirit)
 
 (defn make []
-  {;; Client state that is not important for users.
-   :internal (atom nil)
-   ;; Client state that is important for users. Accessed only from the client
-   ;; thread.
-   :external (volatile! nil)
-   ;; Client state that stores the underlying thread.
-   :instance (volatile! nil)})
+  {;; State used for client start and shutdown. A volatile with a map of:
+   ;;
+   ;; - :thread -- The thread the client loop is executing on.
+   ;; - :future -- The future that will receive the result of the client loop.
+   ;; - :wait -- A promise delivered just before the client enters its loop.
+   :control (volatile! nil)
+   ;; State used for external requests. An atom with a map of:
+   ;;
+   ;; - :listeners -- A map of event types to seqs of 1-ary functions.
+   ;; - :invokes -- A queue of 0-ary functions.
+   ;; - :done? -- Whether shutdown was requested.
+   :requests (atom nil)
+   ;; State used for the game. Accessed only from the client thread. A volatile
+   ;; with a map of:
+   ;;
+   ;; - :ticks -- The number of game ticks that have elapsed. 1 tick per second.
+   :game (volatile! nil)})
 
 (defonce
   ^{:private true :doc "The global client instance."}
@@ -27,103 +37,118 @@
 
 (defn- process
   "The client loop."
-  [{:keys [internal external] :as _client}]
+  [{:keys [game requests] :as client}]
   (loop []
-    ;; Update state
-    (vswap! external update :ticks inc)
-    ;; Dispatch tick event
-    (let [{:keys [listeners]} @internal]
+    (let [{:keys [listeners invokes done?] :as requests}
+          (first (swap-vals! requests assoc :invokes []))]
+      ;; Update game state
+      (vswap! game update :ticks inc)
+      ;; Dispatch tick event
       (doseq [f (vals (:tick listeners))]
-        (dispatch f {:tag :tick})))
-    ;; Dispatch invokes
-    (let [[{:keys [invokes]} _] (swap-vals! internal update :invokes pop)]
-      (when (not-empty invokes)
-        (dispatch (first invokes))))
-    ;; Loop
-    (when-not (:done? @internal)
-      (Thread/sleep 1000)
-      (recur))))
+        (dispatch f {:tag :tick}))
+      ;; Dispatch invokes
+      (doseq [f invokes]
+        (dispatch f))
+      ;; Loop
+      (if done?
+        {:requests requests :game @game}
+        (do (Thread/sleep 1000)
+            (recur))))))
 
 (defn- main
-  "The entrypoint of the client thread. `ready?` is a promise delivered once all
-  client state has been initialized."
-  [{:keys [internal external] :as client} ready?]
+  "The entrypoint of the client thread."
+  [{:keys [requests game] :as client} wait]
   (try
     (log/info "Client started")
-    (reset! internal {:done? false :listeners {} :invokes (PersistentQueue/EMPTY)})
-    (vreset! external {:ticks 0})
-    (deliver ready? true)
+    (reset! requests {:listeners {} :invokes [] :done? false})
+    (vreset! game {:ticks 0})
+    (deliver wait true)
     (process client)
     (catch Throwable e
       (log/error "Client error" e))
     (finally
-      (reset! internal nil)
-      (vreset! external nil)
+      (vreset! game nil)
+      (reset! requests nil)
       (log/error "Client exited"))))
 
-(defn done!
-  "Request the client to shut down. Return whether the client was running."
+(defn state
+  "Fetch the current game state. Must be run on the client thread."
   ([]
-   (done! the-client))
-  ([{:keys [internal] :as _client}]
-   (some? (swap! internal #(some-> % (assoc :done? true))))))
+   (state the-client))
+  ([{:keys [control game] :as _client}]
+   (assert (= (Thread/currentThread) (:thread @control))
+           "Not on the client thread")
+   @game))
 
 (defn register!
-  "Register a 1-ary function as a listener for a client event."
+  "Register the 1-ary function `f` as a listener for client events of type `type`,
+  under the key `key`. The key can be used to unregister the listener."
   ([type key f]
    (register! the-client type key f))
-  ([{:keys [internal] :as _client} type key f]
-   (assert @internal "Client not started")
-   (swap! internal update-in [:listeners type] assoc key f)
+  ([{:keys [requests] :as _client} type key f]
+   (swap! requests #(do (assert % "Client not started")
+                        (update-in % [:listeners type] assoc key f)))
    key))
 
 (defn unregister!
-  "Unregister a previously registered listener."
+  "Unregister a listener previously registered under the key `key`."
   ([key]
    (unregister! the-client key))
-  ([{:keys [internal] :as _client} key]
-   (assert @internal "Client not started")
-   (swap! internal update :listeners update-vals #(dissoc % key))
+  ([{:keys [requests] :as _client} key]
+   (swap! requests #(do (assert % "Client not started")
+                        (update % :listeners update-vals
+                                (fn [m] (dissoc m key)))))
    key))
 
-(defn restart!
-  "(Re)Start the global client instance."
-  ([]
-   (restart! the-client))
-  ([{:keys [instance] :as client}]
-   (locking instance
-     ;; Shut down an existing instance, if any
-     (when-let [{:keys [future]} @instance]
-       (when (done! client)
-         @future))
-     ;; Launch a new instance
-     (let [ready? (promise)
-           future (future
-                    (vswap! instance assoc :thread (Thread/currentThread))
-                    (main client ready?))]
-       @ready?
-       (vswap! instance assoc :future future)))))
-
-(defn state
-  "Fetch the current external client state. Must be run on the client thread."
-  ([]
-   (state the-client))
-  ([{:keys [external instance] :as _client}]
-   (when-not (= (Thread/currentThread) (:thread @instance))
-     (throw (ex-info "Not on the client thread" {})))
-   @external))
-
 (defn invoke!
-  "Invoke a 0-ary function on the client thread. If called from the client thread,
-  `f` is invoked immediately, otherwise at some point in the future."
+  "Invoke the 0-ary function `f` on the client thread. If called from the client
+  thread, `f` is invoked immediately, otherwise at some point in the future."
   ([f]
    (invoke! the-client f))
-  ([{:keys [internal instance] :as _client} f]
-   (assert @internal "Client not started")
-   (if (= (Thread/currentThread) (:thread @instance))
+  ([{:keys [control requests] :as _client} f]
+   (if (= (Thread/currentThread) (:thread @control))
      (f)
-     (swap! internal update :invokes conj f))
+     (swap! requests #(do (assert % "Client not started")
+                          (update % :invokes conj f))))
    f))
+
+(defn start!
+  "Start the client. Clear all previously registered listeners and queued invokes.
+  Return when the client is ready to accept new registrations and invokes."
+  ([]
+   (start! the-client))
+  ([{:keys [control] :as client}]
+   (locking control
+     (when-not @control
+       (let [wait (promise)
+             future (future
+                      (vswap! control assoc
+                              :thread (Thread/currentThread)
+                              :wait wait)
+                      (main client wait))]
+         (vswap! control assoc :future future)
+         @wait)))))
+
+(defn stop!
+  "Stop the client. Return when the client thread has terminated."
+  ([]
+   (stop! the-client))
+  ([{:keys [control requests] :as client}]
+   (locking control
+     (when-let [{:keys [future]} @control]
+       (swap! requests assoc :done? true)
+       (let [res @future]
+         (vreset! control nil)
+         res)))))
+
+(defn restart!
+  "Stop then start the client."
+  ([]
+   (restart! the-client))
+  ([{:keys [control] :as client}]
+   (locking control
+     (stop! client)
+     (start! client))))
 
 (comment
   ;; Start the client
