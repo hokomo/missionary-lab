@@ -35,7 +35,7 @@
 (defn log-abrupt
   "Return a task that will log abrupt termination (spotaneous failures)."
   [task]
-  (spontaneously? task {} #(when %1 (log/error "Terminated abruptly" %2))))
+  (spontaneously? task {} #(when %1 (log/error %2 "Terminated abruptly"))))
 
 ;;; Flows
 

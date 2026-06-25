@@ -33,7 +33,7 @@
 (defn- dispatch
   "Invoke `f` with `args`, ignoring and logging all exceptions."
   [f & args]
-  (try (apply f args) (catch Throwable e (log/error "Dispatch error" e))))
+  (try (apply f args) (catch Throwable t (log/error t "Dispatch error"))))
 
 (defn- process
   "The client loop."
@@ -64,12 +64,12 @@
     (vreset! game {:ticks 0})
     (deliver wait true)
     (process client)
-    (catch Throwable e
-      (log/error "Client error" e))
+    (catch Throwable t
+      (log/error t "Client error"))
     (finally
       (vreset! game nil)
       (reset! requests nil)
-      (log/error "Client exited"))))
+      (log/info "Client exited"))))
 
 (defn state
   "Fetch the current game state. Must be run on the client thread."
@@ -158,7 +158,7 @@
   (invoke! #(log/info "Hello from the client thread"))
 
   ;; Must not access the state off the client thread
-  (try (state) (catch Throwable e (log/error e)))
+  (try (state) (catch Throwable t (log/error t)))
 
   ;; Must access the state on the client thread
   (invoke! #(log/info "State:" (state)))

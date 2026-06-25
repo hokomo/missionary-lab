@@ -159,10 +159,10 @@
   (def m (machine-go example-machine (w/client-events :tick)))
 
   ;; Client events are expected to be delivered from the client thread
-  (try (m/? (m {:tag :tick})) (catch Throwable e (log/error e)))
+  (try (m/? (m {:tag :tick})) (catch Throwable t (log/error t)))
 
   ;; Invalid events crash the machine
-  (try (m/? (m :invalid)) (catch Throwable e (log/error e)))
+  (try (m/? (m :invalid)) (catch Throwable t (log/error t)))
 
   ;; Cancel the machine
   (m)

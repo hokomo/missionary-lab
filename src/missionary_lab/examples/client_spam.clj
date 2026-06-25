@@ -29,9 +29,9 @@
   (m/? (m/sp
         (w/to-client)
         (dotimes [_ 3]
-          (log/info "Before: " (:ticks (c/state)))
+          (log/info "Before:" (:ticks (c/state)))
           (m/? (tick-wait-1))
-          (log/info "After: " (:ticks (c/state))))))
+          (log/info "After:" (:ticks (c/state))))))
   )
 
 ;;; Version 2
@@ -56,9 +56,9 @@
          (m/sp
            (w/to-client)
            (dotimes [_ 3]
-             (log/info "Before: " (:ticks (c/state)))
+             (log/info "Before:" (:ticks (c/state)))
              (m/? (tick-wait-2 events))
-             (log/info "After: " (:ticks (c/state))))))))
+             (log/info "After:" (:ticks (c/state))))))))
 
 ;;; Version 3
 ;;;
@@ -73,7 +73,7 @@
           (m/sp
            (w/to-client)
            (dotimes [_ 3]
-             (log/info "Before: " (:ticks (c/state)))
+             (log/info "Before:" (:ticks (c/state)))
              (m/? (tick-wait-2 events))
-             (log/info "After: " (:ticks (c/state))))))))
+             (log/info "After:" (:ticks (c/state))))))))
   )
