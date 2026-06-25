@@ -1,4 +1,4 @@
-(ns missionary-lab.client
+(ns missionary-lab.examples.client.core
   (:require
    [clojure.tools.logging :as log])
   (:import

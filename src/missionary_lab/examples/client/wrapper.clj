@@ -1,13 +1,13 @@
-(ns missionary-lab.base
+(ns missionary-lab.examples.client.wrapper
   (:require
    [clojure.tools.logging :as log]
    [missionary.core :as m]
-   [missionary-lab.client :as c]
+   [missionary-lab.examples.client.core :as c]
    [missionary-lab.util :as u])
   (:import
    java.util.concurrent.Executor))
 
-;;; Client API (similar to Java Swing's in spirit)
+;;; Core Client API (similar to Java Swing's in spirit)
 
 (comment
   ;; Start the client

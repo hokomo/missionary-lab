@@ -1,4 +1,4 @@
-(ns missionary-lab.reduce
+(ns missionary-lab.examples.reduce
   (:require
    [missionary.core :as m]))
 

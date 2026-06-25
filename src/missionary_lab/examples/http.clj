@@ -1,4 +1,4 @@
-(ns missionary-lab.http
+(ns missionary-lab.examples.http
   (:require
    [babashka.http-client :as bb]
    [clj-http.client :as ch]

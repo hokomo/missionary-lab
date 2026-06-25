@@ -1,9 +1,9 @@
-(ns missionary-lab.machine
+(ns missionary-lab.examples.client-machine
   (:require
    [clojure.tools.logging :as log]
    [missionary.core :as m]
-   [missionary-lab.base :as b]
-   [missionary-lab.client :as c]
+   [missionary-lab.examples.client.wrapper :as w]
+   [missionary-lab.examples.client.core :as c]
    [missionary-lab.util :as u]))
 
 ;;; Executor
@@ -154,7 +154,7 @@
   (c/restart!)
 
   ;; Start the state machine
-  (def m (machine-go example-machine (b/client-events :tick)))
+  (def m (machine-go example-machine (w/client-events :tick)))
 
   ;; Client events are expected to be delivered from the client thread
   (try (m/? (m {:tag :tick})) (catch Throwable e (log/error e)))

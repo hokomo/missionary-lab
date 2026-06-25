@@ -1,4 +1,4 @@
-(ns missionary-lab.reflection
+(ns missionary-lab.examples.reflection
   (:require
    [missionary.core :as m])
   (:import
