@@ -6,6 +6,8 @@
    [missionary-lab.examples.client.core :as c]
    [missionary-lab.util :as u]))
 
+;;; Problem: Model a state machine driven by client events
+
 ;;; Executor
 
 (defn executor
@@ -70,7 +72,7 @@
   (m/sp (try (let [result (m/? task)] (when s (m/? (push (s result)))))
              (catch Throwable t (when f (m/? (push (f t))))))))
 
-;;; Problem: Modeling a state machine
+;;; Example Machine
 
 (defn example-pusher
   "Return a `machine-pusher` whose result functions wrap the result into a map

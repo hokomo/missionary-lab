@@ -8,21 +8,23 @@
 
 ;;; Problem: Avoiding flow registration spam
 
+;;; Version 1
+;;;
+;;; The flow will be registered/unregistered on every call to `tick-wait-1`.
+
 (defn tick-wait-1
   "Return a task that waits for the client's tick counter to advance by 1."
   []
   (m/sp
-    (let [tick (w/on-client (:ticks (c/state)))]
-      (m/? (u/doflow [_ (w/client-events :tick)]
-             (let [tick' (:ticks (c/state))]
-               (when (>= tick' (inc tick))
-                 (reduced [tick tick']))))))))
+   (let [tick (w/on-client (:ticks (c/state)))]
+     (m/? (u/doflow [_ (w/client-events :tick)]
+                    (let [tick' (:ticks (c/state))]
+                      (when (>= tick' (inc tick))
+                        (reduced [tick tick']))))))))
 
 (comment
   (c/restart!)
 
-  ;; Version 1. The flow has to be registered/unregistered for every call to
-  ;; `tick-wait-1`.
   (m/? (m/sp
          (w/on-client
            (dotimes [_ 3]
@@ -31,30 +33,38 @@
              (log/info "After: " (:ticks (c/state)))))))
   )
 
+;;; Version 2
+;;;
+;;; We create an `m/stream` of the flow of events but because there's only a
+;;; single subscriber the flow will still be registered/unregistered on every
+;;; call to `tick-wait-2`.
+
 (defn tick-wait-2
   "Like `tick-wait-1` but accepts the flow of tick events as a parameter."
   [ticks]
   (m/sp
-    (let [tick (w/on-client (:ticks (c/state)))]
-      (m/? (u/doflow [_ ticks]
-             (let [tick' (:ticks (c/state))]
-               (when (>= tick' (inc tick))
-                 (reduced [tick tick']))))))))
+   (let [tick (w/on-client (:ticks (c/state)))]
+     (m/? (u/doflow [_ ticks]
+                    (let [tick' (:ticks (c/state))]
+                      (when (>= tick' (inc tick))
+                        (reduced [tick tick']))))))))
 
 (comment
-  ;; Version 2. We create a `stream` from the flow of events but because there's
-  ;; only a single subscriber the flow still has to be registered/unregistered
-  ;; for each every to `tick-wait-2`.
   (m/? (let [events (m/stream (w/client-events :tick))]
          (m/sp
            (w/on-client
-             (dotimes [_ 3]
-               (log/info "Before: " (:ticks (c/state)))
-               (m/? (tick-wait-2 events))
-               (log/info "After: " (:ticks (c/state))))))))
+            (dotimes [_ 3]
+              (log/info "Before: " (:ticks (c/state)))
+              (m/? (tick-wait-2 events))
+              (log/info "After: " (:ticks (c/state)))))))))
 
-  ;; Version 3. We use a no-op `reduce` task to keep the created `stream` alive
-  ;; and ticking.
+;;; Version 3
+;;;
+;;; We use a no-op `m/reduce` task to keep the created `m/stream` alive and
+;;; ticking. This prevents the registration/unregistration of the flow on every
+;;; call to `tick-wait-2`.
+
+(comment
   (m/? (let [events (m/stream (w/client-events :tick))]
          (u/fastest
           (m/reduce {} nil events)
