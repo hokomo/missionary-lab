@@ -7,6 +7,25 @@
    [missionary-lab.util :as u]))
 
 ;;; Problem: Model a state machine driven by client events
+;;;
+;;; Implement a state machine that we'll call "count-or-job" ("coj"). It must do
+;;; the following while respecting the client API (in particular, it must
+;;; correctly read the client state only from the client thread):
+;;;
+;;; 1. Wait for the client's tick counter to reach a number divisible by
+;;;    `div` (a positive integer) and launch a potentially failing `job` (a
+;;;    Missionary task) executing asynchronously in the background.
+;;;
+;;; 2. Wait for one of two things to happen, whichever is first: (a) the tick
+;;;    counter reaches the value `div` + `offset` (a positive integer) or (b)
+;;;    the job completes successfully.
+;;;
+;;; 2a. If the tick value `div` + `offset` is reached first, the job is
+;;;     cancelled and the machine goes back to its initial state when the job
+;;;     has fully terminated.
+;;;
+;;; 2b. If the job completed successfully first, the machine immediately goes
+;;;     back to its initial state.
 
 ;;; Executor
 
@@ -18,7 +37,7 @@
     (let [task (m/?> ##Inf (u/continually mbx))]
       (try (m/? (u/logged task)) (catch Throwable _)))))
 
-(defn exec
+(defn executor-exec
   "Send off a `task` for execution to an executor backed by `mbx`. Return a
   canceller for the task."
   [mbx task]
@@ -30,140 +49,104 @@
 
 (defn machine-loop
   "Return a flow of [`event` `behavior`] pairs that describes the evolution of a
-  state machine as it receives `events`. A behavior is a 1-ary function that
-  accepts an event and returns a new behavior (to be used for accepting the next
-  event), or a `reduced` (which terminates the machine). `init` is the initial
-  behavior. The first value produced by the flow is [nil `init`]."
+  state machine as it consumes events from the flow `events`. A behavior is a
+  1-ary function that accepts an event and returns either a new behavior (to be
+  used for accepting the next event) or a `reduced` (which terminates the
+  machine). `init` is the initial behavior. The first value produced by the flow
+  is [nil `init`]."
   [init events]
   (letfn [(rf [[_acc f] event]
             (let [g (f event)]
               (if (reduced? g) g [event g])))]
     (m/reductions rf [nil init] events)))
 
-(defn machine-top
-  "Return a task that represents the machine top level: the concurrent execution
-  of the machine's loop and an accompanying executor. `push` is an `rdv` that
-  can be used to inject an event into the machine loop's event flow. `ctor` is a
-  3-ary function accepting `exec` and `push`, and returning the machine's
-  initial behavior. `exec` is a 1-ary function accepting a task to to execute on
-  the machine's executor and returning a canceller. `events` is the primary flow
-  of events fed to the machine loop."
-  [push ctor events]
-  (let [mbx (m/mbx)
-        init (ctor (partial exec mbx) push)
-        events (u/select events (u/continually push))]
-    (m/any (m/reduce {} nil (machine-loop init events))
-           (m/reduce {} nil (executor mbx)))))
+(defn machine
+  "Return a task that is a state machine driven by the flow `events`. `ctor` is a
+  1-ary function accepting the machine's \"plumbing\" and returning the initial
+  behavior. The plumbing is a map of `:send` and `:exec`. `:send` is the
+  provided `rdv` which can be used to inject an event into the machine's event
+  flow. `:exec` is a 1-ary function accepting a task to execute on the machine's
+  accompanying executor and returning its canceller. `events` is the primary
+  flow of events fed to the machine loop."
+  ([ctor events]
+   (m/sp (m/? (machine (m/rdv) (m/mbx) ctor events))))
+  ([rdv mbx ctor events]
+   (let [events (u/select events (u/continually rdv))
+         exec (partial executor-exec mbx)
+         plumbing {:push rdv :exec exec}
+         init (ctor plumbing)]
+     (m/any (m/reduce {} nil (machine-loop init events))
+            (m/reduce {} nil (executor mbx))))))
 
-(defn machine-go
-  "Instantiate a `machine-top` task with the given `ctor` and `events`. Return a
-  function of 2 arities. The 0-ary is a canceller. The 1-ary is a `push` for the
-  machine."
-  [ctor events]
-  (let [push (m/rdv)
-        proc ((u/logged (machine-top push ctor events)) {} {})]
-    (fn
-      ([] (proc))
-      ([e] (push e)))))
+;;; Count-or-Job
 
-(defn machine-pusher
-  "Return a task that will apply `s`/`f` to `task`'s success/failure result and
-  deliver the final result as an event via `push`."
-  [push task s f]
-  (m/sp (try (let [result (m/? task)] (when s (m/? (push (s result)))))
-             (catch Throwable t (when f (m/? (push (f t))))))))
-
-;;; Example Machine
-
-(defn example-pusher
-  "Return a `machine-pusher` whose result functions wrap the result into a map
-  with a `:tag` key equal to `tag` and an `s`/`f` key (`:val`/`:err` by default)
-  equal to the success/failure result."
-  [push task tag & [s f]]
-  (machine-pusher
-   push task
-   (fn [v] {:tag tag (or s :val) v})
-   (fn [e] {:tag tag (or f :err) e})))
-
-(defn example-job
-  "Return a task representing some example work by sleeping for a random number of
-  seconds in the interval `work-for`. The task can fail with a chance of
-  `chance` in which case it sleeps for `fail-for` and throws."
-  [work-for chance fail-for]
+(defn coj-job
+  "Return a task emulating some work. It sleeps for a random number of seconds
+  from the interval `work-for` and then either terminates with the number of
+  seconds slept, or fails with probability `p`."
+  [work-for p]
   (m/sp
-    (if (< (rand) chance)
-      (do (m/? (m/sleep (* (apply u/rand-in fail-for) 1000)))
-          (throw (ex-info "Crash" {})))
-      (let [delay (apply u/rand-in work-for)]
-        (m/? (m/sleep (* delay 1000) delay))))))
+    (let [delay (apply u/rand-in work-for)]
+      (m/? (m/sleep (* delay 1000)))
+      (if (< (rand) p)
+        (throw (ex-info "Fail" {}))
+        delay))))
 
-(defn example-machine
-  "Return the initial behavior of an example state machine that is powered by
-  various events, primarily those from the client. When started, the machine
-  does the following in order:
-
-  1. Waits for the client's tick counter to reach a number divisible by 10 (call
-  this value `start`) and launches `example-job` in the background.
-
-  2. Waits for one of two things to happen, whichever is first: (a) the tick
-  counter reaches the value `start` + 7 or (b) the job completes successfully.
-
-  2a. If the tick value `start` + 7 is reached first, the job is cancelled and
-  the machine goes back to its initial state once the job has fully terminated.
-
-  2b. If the job finished first, the machine immediately goes back to its
-  initial state."
-  [exec push]
-  (letfn [(job []
-            (example-pusher push (example-job [5 10] 0.5 [3 3]) :job))
-          (wait-start [state]
-            (fn [{:keys [tag]}]
-              (case tag
-                :tick
-                (let [{:keys [ticks]} (c/state)]
-                  (log/info "Tick:" ticks)
-                  (if (zero? (mod ticks 10))
-                    (do (log/info "Starting!")
-                        (wait-one (assoc state :start ticks :job (exec (job)))))
-                    (wait-start state))))))
-          (wait-one [{:keys [start job] :as state}]
-            (fn [{:keys [tag val]}]
-              (case tag
-                :job
-                (if val
-                  (do (log/info "Job finished first:" val)
-                      (wait-start {}))
-                  (do (log/info "Job failed")
-                      (wait-one (dissoc state :job))))
-                :tick
-                (let [{:keys [ticks]} (c/state)]
-                  (log/info "Tick:" ticks)
-                  (if (= ticks (+ start 7))
-                    (do (log/info "Ticks reached first:" ticks)
-                        (if job
-                          (do (job) (wait-job {}))
-                          (wait-start {})))
-                    (wait-one state))))))
-          (wait-job [state]
-            (fn [{:keys [tag val err]}]
-              (case tag
-                :job
-                (do (log/info "Job cancelled:" (or val err))
-                    (wait-start state))
-                (wait-job state))))]
-    (wait-start {})))
+(defn coj-machine
+  "Return the initial behavior of a \"count-or-job\" state machine, parameterized
+  by `div` (a positive integer), `offset` (a positive integer), and `job` (a
+  Missionary task)."
+  [div offset job {:keys [push exec] :as _plumbing}]
+  (let [job (m/sp
+              (let [res (try {:val (m/? job)} (catch Throwable t {:err t}))]
+                (m/? (push (merge {:tag :job} res)))))]
+    (letfn [(wait-div [state]
+              (fn [{:keys [tag]}]
+                (case tag
+                  :tick
+                  (let [{:keys [ticks]} (c/state)]
+                    (log/info "Tick:" ticks)
+                    (if (zero? (mod ticks div))
+                      (do (log/info "Starting job!")
+                          (wait-coj (assoc state :start ticks :proc (exec job))))
+                      (wait-div state))))))
+            (wait-coj [{:keys [start proc] :as state}]
+              (fn [{:keys [tag val err]}]
+                (case tag
+                  :tick
+                  (let [{:keys [ticks]} (c/state)]
+                    (log/info "Waiting:" ticks)
+                    (if (= ticks (+ start offset))
+                      (do (log/info "Ticks reached first:" ticks)
+                          (if proc
+                            (do (proc) (wait-job {}))
+                            (wait-div {})))
+                      (wait-coj state)))
+                  :job
+                  (if val
+                    (do (log/info "Job finished first:" val)
+                        (wait-div {}))
+                    (do (log/info err "Job failed")
+                        (wait-coj (dissoc state :proc)))))))
+            (wait-job [state]
+              (fn [{:keys [tag val err]}]
+                (case tag
+                  :job
+                  (do (if val
+                        (log/info "Job cancelled:" val)
+                        (log/info err "Job cancelled"))
+                      (wait-div state))
+                  (wait-job state))))]
+      (wait-div {}))))
 
 (comment
   (c/restart!)
 
   ;; Start the state machine
-  (def m (machine-go example-machine (w/client-events :tick)))
-
-  ;; Client events are expected to be delivered from the client thread
-  (try (m/? (m {:tag :tick})) (catch Throwable t (log/error t)))
-
-  ;; Invalid events crash the machine
-  (try (m/? (m :invalid)) (catch Throwable t (log/error t)))
+  (def m
+    (u/monitor
+     (machine (partial coj-machine 10 7 (coj-job [5 10] 0.5))
+              (w/client-events :tick))))
 
   ;; Cancel the machine
   (m)
