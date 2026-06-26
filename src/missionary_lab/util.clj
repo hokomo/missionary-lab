@@ -39,12 +39,6 @@
 
 ;;; Flows
 
-(defmacro doflow
-  "A convenient shorthand for a particular style of `reduce`. `e` is bound to the
-  transfered value and `body` is the body of the reducing function."
-  [[e flow] & body]
-  `(m/reduce (fn [~'_ ~e] ~@body) nil ~flow))
-
 (defn select
   "Return a flow that non-deterministically transfers from any of its input
   flows."

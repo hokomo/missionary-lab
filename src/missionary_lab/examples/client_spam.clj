@@ -18,10 +18,12 @@
   (m/sp
    (w/to-client)
    (let [tick (:ticks (c/state))]
-     (m/? (u/doflow [_ (w/client-events :tick)]
-                    (let [tick' (:ticks (c/state))]
-                      (when (>= tick' (inc tick))
-                        (reduced [tick tick']))))))))
+     (m/? (m/reduce
+           (fn [_acc _event]
+             (let [tick' (:ticks (c/state))]
+               (when (>= tick' (inc tick))
+                 (reduced [tick tick']))))
+           nil (w/client-events :tick))))))
 
 (comment
   (c/restart!)
@@ -46,10 +48,12 @@
   (m/sp
    (w/to-client)
    (let [tick (:ticks (c/state))]
-     (m/? (u/doflow [_ ticks]
-                    (let [tick' (:ticks (c/state))]
-                      (when (>= tick' (inc tick))
-                        (reduced [tick tick']))))))))
+     (m/? (m/reduce
+           (fn [_acc _event]
+             (let [tick' (:ticks (c/state))]
+               (when (>= tick' (inc tick))
+                 (reduced [tick tick']))))
+           nil ticks)))))
 
 (comment
   (m/? (let [events (m/stream (w/client-events :tick))]
@@ -58,7 +62,8 @@
            (dotimes [_ 3]
              (log/info "Before:" (:ticks (c/state)))
              (m/? (tick-wait-2 events))
-             (log/info "After:" (:ticks (c/state))))))))
+             (log/info "After:" (:ticks (c/state)))))))
+  )
 
 ;;; Version 3
 ;;;
