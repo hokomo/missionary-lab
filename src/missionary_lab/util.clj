@@ -40,13 +40,14 @@
            (cancel)))))
 
 (defn logged
-  "Return a task that executes `task` and forwards its result, but also logs it:
-  whether it terminated successfully, due to an application failure, or due to a
-  cancellation request."
+  "Return a task that executes `task` and forwards its result, but also logs
+  when and how it terminates."
   [task]
   (spontaneously? task
-                  (fn [_spontaneous? v]
-                    (log/info "Process terminated successfully:" v)
+                  (fn [spontaneous? v]
+                    (if spontaneous?
+                      (log/info "Process terminated successfully:" v)
+                      (log/info "Process cancelled successfully:" v))
                     v)
                   (fn [spontaneous? e]
                     (if spontaneous?
@@ -77,9 +78,9 @@
 
 (defn awaitable
   "Return a task that executes `task` and forwards its result, but whose canceller
-  that additionally acts as a future. The future implements the `IPending`,
-  `IDeref` and `IBlockingDeref` interfaces and provides knowledge on whether the
-  task terminated and with what result."
+  additionally acts as a future. The future implements the `IPending`, `IDeref`
+  and `IBlockingDeref` interfaces, and provides knowledge on whether the task
+  terminated and with what result."
   [task]
   (fn [s! f!]
     (let [d (md/deferred)
