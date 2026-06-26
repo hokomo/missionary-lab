@@ -5,6 +5,7 @@
   :dependencies [[clj-http/clj-http "3.13.1"]
                  [hato/hato "1.0.0"]
                  [java-http-clj/java-http-clj "0.4.3"]
+                 [manifold/manifold "0.5.0"]
                  [missionary/missionary "b.47"]
                  [org.babashka/http-client "0.4.22"]
                  [org.clojure/clojure "1.11.1"]

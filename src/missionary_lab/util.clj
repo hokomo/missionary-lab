@@ -1,7 +1,14 @@
 (ns missionary-lab.util
   (:require
    [clojure.tools.logging :as log]
-   [missionary.core :as m]))
+   [clojure.pprint :as pp]
+   [manifold.deferred :as md]
+   [missionary.core :as m])
+  (:import
+   clojure.lang.IFn
+   clojure.lang.IBlockingDeref
+   clojure.lang.IDeref
+   clojure.lang.IPending))
 
 ;;; Math
 
@@ -46,6 +53,44 @@
                       (log/error e "Process failed")
                       (log/error e "Process cancelled"))
                     e)))
+
+(defrecord Awaitable [proc d]
+  IFn
+  (invoke [this]
+    (proc)
+    this)
+  IPending
+  (isRealized [this]
+    (realized? d))
+  IDeref
+  (deref [this]
+    @d)
+  IBlockingDeref
+  (deref [this ms val]
+    (deref d ms val)))
+
+(defmethod print-method Awaitable [{:keys [d] :as _a} w]
+  (print-method d w))
+
+(defmethod pp/simple-dispatch Awaitable [{:keys [d] :as _a}]
+  (print-method d *out*))
+
+(defn awaitable
+  "Return a task that executes `task` and forwards its result, but whose canceller
+  that additionally acts as a future. The future implements the `IPending`,
+  `IDeref` and `IBlockingDeref` interfaces and provides knowledge on whether the
+  task terminated and with what result."
+  [task]
+  (fn [s! f!]
+    (let [d (md/deferred)
+          proc (task #(do (md/success! d %) (s! %))
+                     #(do (md/error! d %) (f! %)))]
+      (->Awaitable proc d))))
+
+(defn monitor
+  "Wrap `task` with `logged` and `awaitable` and run it."
+  [task]
+  ((awaitable (logged task)) {} {}))
 
 ;;; Flows
 
