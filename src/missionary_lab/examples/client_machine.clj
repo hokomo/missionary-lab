@@ -31,28 +31,29 @@
 (defn machine-loop
   "Return a flow of [`event` `behavior`] pairs that describes the evolution of a
   state machine as it receives `events`. A behavior is a 1-ary function that
-  accepts an event and returns a new behavior, while `init` is the initial
+  accepts an event and returns a new behavior (to be used for accepting the next
+  event), or a `reduced` (which terminates the machine). `init` is the initial
   behavior. The first value produced by the flow is [nil `init`]."
   [init events]
-  (m/reductions (fn [[_ f] event] [event (f event)]) [nil init] events))
+  (letfn [(rf [[_acc f] event]
+            (let [g (f event)]
+              (if (reduced? g) g [event g])))]
+    (m/reductions rf [nil init] events)))
 
 (defn machine-top
   "Return a task that represents the machine top level: the concurrent execution
   of the machine's loop and an accompanying executor. `push` is an `rdv` that
   can be used to inject an event into the machine loop's event flow. `ctor` is a
-  3-ary function accepting `exec`, `push` and `cancel`, and returning the
-  machine's initial behavior. `exec` is a 1-ary function accepting a task to to
-  execute on the machine's executor and returning a canceller. `cancel` is a
-  canceller for the whole top level. `events` is the primary flow of events fed
-  to the machine loop."
+  3-ary function accepting `exec` and `push`, and returning the machine's
+  initial behavior. `exec` is a 1-ary function accepting a task to to execute on
+  the machine's executor and returning a canceller. `events` is the primary flow
+  of events fed to the machine loop."
   [push ctor events]
   (let [mbx (m/mbx)
-        dfv (m/dfv)
-        init (ctor (partial exec mbx) push #(dfv nil))
+        init (ctor (partial exec mbx) push)
         events (u/select events (u/continually push))]
-    (m/any dfv (m/join (constantly nil)
-                       (m/reduce {} nil (machine-loop init events))
-                       (m/reduce {} nil (executor mbx))))))
+    (m/any (m/reduce {} nil (machine-loop init events))
+           (m/reduce {} nil (executor mbx)))))
 
 (defn machine-go
   "Instantiate a `machine-top` task with the given `ctor` and `events`. Return a
@@ -112,7 +113,7 @@
 
   2b. If the job finished first, the machine immediately goes back to its
   initial state."
-  [exec push cancel]
+  [exec push]
   (letfn [(job []
             (example-pusher push (example-job [5 10] 0.5 [3 3]) :job))
           (wait-start [state]
