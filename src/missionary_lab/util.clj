@@ -22,20 +22,30 @@
 (defn spontaneously?
   "Return a task that invokes `s`/`f` with 2 arguments when `task` terminates
   successfully/with a failure: a boolean flag indicating whether the termination
-  was spontaneous, and the termination result. `s` and `f` must not throw or
-  block."
+  was spontaneous, and the termination result. `s`/`f` must return the value to
+  provide to the success/failure continuation, and must not throw or block."
   [task s f]
   (fn [s! f!]
     (let [cancelled? (atom false)
-          cancel (task #(do (s (not @cancelled?) %) (s! %))
-                       #(do (f (not @cancelled?) %) (f! %)))]
+          cancel (task #(s! (s (not @cancelled?) %))
+                       #(f! (f (not @cancelled?) %)))]
       #(do (reset! cancelled? true)
            (cancel)))))
 
-(defn log-abrupt
-  "Return a task that will log abrupt termination (spotaneous failures)."
+(defn logged
+  "Return a task that executes `task` and forwards its result, but also logs it:
+  whether it terminated successfully, due to an application failure, or due to a
+  cancellation request."
   [task]
-  (spontaneously? task {} #(when %1 (log/error %2 "Terminated abruptly"))))
+  (spontaneously? task
+                  (fn [_spontaneous? v]
+                    (log/info "Process terminated successfully:" v)
+                    v)
+                  (fn [spontaneous? e]
+                    (if spontaneous?
+                      (log/error e "Process failed")
+                      (log/error e "Process cancelled"))
+                    e)))
 
 ;;; Flows
 

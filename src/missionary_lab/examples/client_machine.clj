@@ -16,7 +16,7 @@
   [mbx]
   (m/ap
     (let [task (m/?> ##Inf (u/continually mbx))]
-      (try (m/? (u/log-abrupt task)) (catch Throwable _)))))
+      (try (m/? (u/logged task)) (catch Throwable _)))))
 
 (defn exec
   "Send off a `task` for execution to an executor backed by `mbx`. Return a
@@ -60,7 +60,7 @@
   machine."
   [ctor events]
   (let [push (m/rdv)
-        proc ((u/log-abrupt (machine-top push ctor events)) {} {})]
+        proc ((u/logged (machine-top push ctor events)) {} {})]
     (fn
       ([] (proc))
       ([e] (push e)))))
