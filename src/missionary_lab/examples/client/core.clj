@@ -26,7 +26,7 @@
    :game (volatile! nil)})
 
 (defonce
-  ^{:private true :doc "The global client instance."}
+  ^{:doc "The global client instance."}
   the-client
   (make))
 
