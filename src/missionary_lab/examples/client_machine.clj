@@ -63,7 +63,7 @@
 (defn machine
   "Return a task that is a state machine driven by the flow `events`. `ctor` is a
   1-ary function accepting the machine's \"plumbing\" and returning the initial
-  behavior. The plumbing is a map of `:send` and `:exec`. `:send` is the
+  behavior. The plumbing is a map of `:push` and `:exec`. `:push` is the
   provided `rdv` which can be used to inject an event into the machine's event
   flow. `:exec` is a 1-ary function accepting a task to execute on the machine's
   accompanying executor and returning its canceller. `events` is the primary
