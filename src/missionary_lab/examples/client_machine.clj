@@ -8,23 +8,23 @@
 
 ;;; Problem: Model a state machine driven by client events
 ;;;
-;;; Implement a state machine that we'll call "count-or-job" ("coj"). It must do
-;;; the following while respecting the client API (in particular, it must
-;;; correctly read the client state only from the client thread):
+;;; Implement a state machine that we'll call "count-or-job" ("coj"). It is
+;;; parameterized by `div` (a positive integer), `offset` (a positive integer),
+;;; and `job` (a Missionary task). It must do the following while respecting the
+;;; client API (in particular, it must correctly read the client state only from
+;;; the client thread):
 ;;;
-;;; 1. Wait for the client's tick counter to reach a number divisible by
-;;;    `div` (a positive integer) and launch a potentially failing `job` (a
-;;;    Missionary task) executing asynchronously in the background.
+;;; 1. Wait for the client's tick counter to reach a number divisible by `div`,
+;;;    then launch a potentially failing `job` executing asynchronously in the
+;;;    background.
 ;;;
-;;; 2. Wait for one of two things to happen, whichever is first: (a) the tick
-;;;    counter reaches the value `div` + `offset` (a positive integer) or (b)
-;;;    the job completes successfully.
+;;; 2. Wait for one of two things, whichever happens first: (a) `offset` ticks
+;;;    elapse or (b) the job completes successfully.
 ;;;
-;;; 2a. If the tick value `div` + `offset` is reached first, the job is
-;;;     cancelled and the machine goes back to its initial state when the job
-;;;     has fully terminated.
+;;; 2a. If `offset` ticks elapse first, the job is cancelled and the machine
+;;;     goes back to its initial state when the job has fully terminated.
 ;;;
-;;; 2b. If the job completed successfully first, the machine immediately goes
+;;; 2b. If the job completes successfully first, the machine immediately goes
 ;;;     back to its initial state.
 
 ;;; Executor
@@ -55,7 +55,7 @@
   machine). `init` is the initial behavior. The first value produced by the flow
   is [nil `init`]."
   [init events]
-  (letfn [(rf [[_acc f] event]
+  (letfn [(rf [[_prev f] event]
             (let [g (f event)]
               (if (reduced? g) g [event g])))]
     (m/reductions rf [nil init] events)))
@@ -66,10 +66,9 @@
   behavior. The plumbing is a map of `:push` and `:exec`. `:push` is the
   provided `rdv` which can be used to inject an event into the machine's event
   flow. `:exec` is a 1-ary function accepting a task to execute on the machine's
-  accompanying executor and returning its canceller. `events` is the primary
-  flow of events fed to the machine loop."
+  accompanying executor and returning its canceller."
   ([ctor events]
-   (m/sp (m/? (machine (m/rdv) (m/mbx) ctor events))))
+   (machine (m/rdv) (m/mbx) ctor events))
   ([rdv mbx ctor events]
    (let [events (u/select events (u/continually rdv))
          exec (partial executor-exec mbx)
@@ -93,9 +92,7 @@
         delay))))
 
 (defn coj-machine
-  "Return the initial behavior of a \"count-or-job\" state machine, parameterized
-  by `div` (a positive integer), `offset` (a positive integer), and `job` (a
-  Missionary task)."
+  "Return the initial behavior of a \"count-or-job\" state machine."
   [div offset job {:keys [push exec] :as _plumbing}]
   (let [job (m/sp
               (let [res (try {:val (m/? job)} (catch Throwable t {:err t}))]
